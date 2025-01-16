@@ -111,7 +111,8 @@ class QuantumProtocol:
                 current_time = time.time()
                 last_rotation = self.key_timestamps[session_id]
                 
-                if current_time - last_rotation >= 20:  # 20 seconds
+                # Strict 20-second check
+                if current_time - last_rotation >= 20:
                     logger.info(f"Time to rotate keys for session {session_id}")
                     if session_id in self.session_keys:
                         participants = list(self.session_keys[session_id].keys())
@@ -121,8 +122,11 @@ class QuantumProtocol:
                             
                             if alice_ws and bob_ws:
                                 logger.info("Starting key rotation...")
-                                await self._rotate_keys(session_id, alice_ws, bob_ws)
-                                logger.info("Key rotation completed")
+                                success = await self._rotate_keys(session_id, alice_ws, bob_ws)
+                                if success:
+                                    logger.info("Key rotation completed")
+                                    # Update timestamp only after successful rotation
+                                    self.key_timestamps[session_id] = current_time
         except Exception as e:
             logger.error(f"Error in check_and_rotate_keys: {str(e)}")
 

@@ -11,6 +11,7 @@ import warnings
 import ssl
 from pathlib import Path
 import asyncio
+import time
 
 # Suppress warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -100,13 +101,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await manager.connect(websocket, client_id)
     websocket.client_id = client_id
     
+    # Only start key rotation checker for the first client in a session
     async def check_key_rotation():
+        last_check = time.time()
         while True:
             try:
-                await asyncio.sleep(1)  # Check more frequently
-                active_sessions = list(quantum_protocol.session_keys.keys())
-                for session_id in active_sessions:
-                    await quantum_protocol.check_and_rotate_keys(session_id)
+                current_time = time.time()
+                if current_time - last_check >= 1:
+                    last_check = current_time
+                    active_sessions = list(quantum_protocol.session_keys.keys())
+                    for session_id in active_sessions:
+                        # Only rotate if this client is the first participant
+                        participants = list(quantum_protocol.session_keys[session_id].keys())
+                        if participants and participants[0] == client_id:
+                            await quantum_protocol.check_and_rotate_keys(session_id)
+                await asyncio.sleep(1)
             except Exception as e:
                 logger.error(f"Error in key rotation: {str(e)}")
     

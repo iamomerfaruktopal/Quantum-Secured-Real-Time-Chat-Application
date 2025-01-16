@@ -493,33 +493,95 @@
         let sessionKeys = new Map(); // Store multiple session keys
 
         function startKeyTimer() {
+            // Clear any existing timer first
+            if (keyRotationTimer) {
+                clearInterval(keyRotationTimer);
+                keyRotationTimer = null;
+            }
+
             let timeLeft = 20;
             const timerElement = document.getElementById('key-timer');
             const keyStatus = document.getElementById('key-status');
             keyStatus.style.display = 'flex';
             
-            // Clear any existing timer
-            if (keyRotationTimer) {
-                clearInterval(keyRotationTimer);
-            }
-            
             // Update immediately
             timerElement.textContent = `Next rotation in: ${timeLeft}s`;
             
+            // Start new timer
             keyRotationTimer = setInterval(() => {
                 timeLeft--;
                 if (timeLeft >= 0) {
                     timerElement.textContent = `Next rotation in: ${timeLeft}s`;
                 }
-                // Don't reset timeLeft here - let it continue counting down
             }, 1000);
         }
 
+        // Helper function to create message elements
+        function createMessageElement(type, content, sender) {
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `message-bubble ${type}-message`;
+
+            // Create sender element
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'message-sender';
+            senderDiv.textContent = sender;
+            messageBubble.appendChild(senderDiv);
+
+            // Create content element
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+            messageBubble.appendChild(contentDiv);
+
+            // Create encrypted text element for received messages
+            if (type === 'received') {
+                const encryptedDiv = document.createElement('div');
+                encryptedDiv.className = 'encrypted-text';
+                encryptedDiv.textContent = content;
+                messageBubble.appendChild(encryptedDiv);
+
+                // Create decrypt button
+                const decryptButton = document.createElement('button');
+                decryptButton.className = 'decrypt-button';
+                decryptButton.textContent = 'Decrypt';
+                decryptButton.onclick = () => decryptMessage(content, decryptButton);
+                messageBubble.appendChild(decryptButton);
+            }
+
+            // Create timestamp element
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = formatTime(new Date());
+            messageBubble.appendChild(timeDiv);
+
+            return messageBubble;
+        }
+
+        // Helper function to create system messages
+        function createSystemMessage(message, type = 'info') {
+            const systemMessage = document.createElement('div');
+            systemMessage.className = `system-message ${type}`;
+            
+            const messageText = document.createElement('p');
+            messageText.textContent = message;
+            systemMessage.appendChild(messageText);
+            
+            return systemMessage;
+        }
+
+        // Update the onmessage handler
         async function onmessage(event) {
             const data = JSON.parse(event.data);
-            
+            const chatMessages = document.getElementById('chat-messages');
+
             if (data.type === 'key_generated' || data.type === 'key_rotation') {
                 try {
+                    // Clear existing timer before starting new one
+                    if (keyRotationTimer) {
+                        clearInterval(keyRotationTimer);
+                        keyRotationTimer = null;
+                    }
+
                     sessionId = data.session_id;
                     const keyBase64 = data.encryption_key;
                     const binaryStr = atob(keyBase64);
@@ -528,7 +590,6 @@
                         bytes[i] = binaryStr.charCodeAt(i);
                     }
 
-                    // Import the key with proper settings
                     cryptoKey = await window.crypto.subtle.importKey(
                         "raw",
                         bytes,
@@ -536,64 +597,56 @@
                             name: "AES-GCM",
                             length: 256
                         },
-                        false,  // Changed to false to prevent key extraction issues
+                        false,
                         ["encrypt", "decrypt"]
                     );
 
-                    const chatMessages = document.getElementById('chat-messages');
-                    if (data.type === 'key_generated') {
-                        chatMessages.innerHTML += `
-                            <div class="system-message">
-                                <p class="success">🔑 Secure connection established!</p>
-                                <p>Session ID: ${sessionId}</p>
-                            </div>
-                        `;
-                    } else {
-                        chatMessages.innerHTML += `
-                            <div class="system-message">
-                                <p class="info">🔄 Keys updated - Messages remain secure</p>
-                                <p>New Session ID: ${sessionId}</p>
-                            </div>
-                        `;
-                    }
+                    // Create and append system message
+                    const systemMsg = createSystemMessage(
+                        data.type === 'key_generated' 
+                            ? `🔑 Secure connection established! Session ID: ${sessionId}`
+                            : `🔄 Keys updated - Messages remain secure. New Session ID: ${sessionId}`,
+                        'success'
+                    );
+                    chatMessages.appendChild(systemMsg);
 
                     // Update key status display
                     const keyStatus = document.getElementById('key-status');
+                    keyStatus.textContent = '';  // Clear existing content
+
+                    const sessionSpan = document.createElement('span');
+                    sessionSpan.textContent = `Current Session: ${sessionId.substr(0, 8)}...`;
+                    keyStatus.appendChild(sessionSpan);
+
+                    const timerSpan = document.createElement('span');
+                    timerSpan.id = 'key-timer';
+                    timerSpan.className = 'timer';
+                    timerSpan.textContent = 'Next rotation in: 20s';
+                    keyStatus.appendChild(timerSpan);
+
                     keyStatus.style.display = 'flex';
-                    keyStatus.innerHTML = `
-                        <span>Current Session: ${sessionId.substr(0, 8)}...</span>
-                        <span id="key-timer" class="timer">Next rotation in: 20s</span>
-                    `;
-                    
                     startKeyTimer();
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
 
                 } catch (error) {
                     console.error('Key import error:', error);
-                    const chatMessages = document.getElementById('chat-messages');
-                    chatMessages.innerHTML += `
-                        <div class="system-message error">
-                            <p>⚠️ Key update failed: ${error.message}</p>
-                            <p>Please reconnect to ensure secure messaging.</p>
-                        </div>
-                    `;
+                    const errorMsg = createSystemMessage(
+                        `Failed to setup encryption: ${error.message}`,
+                        'error'
+                    );
+                    chatMessages.appendChild(errorMsg);
                 }
-            } else if (data.type === 'encrypted_message') {
-                const chatMessages = document.getElementById('chat-messages');
-                chatMessages.innerHTML += `
-                    <div class="message-bubble received-message">
-                        <div class="message-sender">From ${data.from}</div>
-                        <div class="encrypted-text" style="word-break: break-all; font-family: monospace; font-size: 0.8em;">
-                            ${data.message}
-                        </div>
-                        <button onclick="decryptMessage('${data.message}', this)" class="decrypt-button">
-                            Decrypt Message
-                        </button>
-                        <div class="message-time">${formatTime(new Date())}</div>
-                    </div>
-                `;
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } 
+            else if (data.type === 'encrypted_message') {
+                const messageElement = createMessageElement(
+                    'received',
+                    data.message,
+                    `From ${data.from}`
+                );
+                chatMessages.appendChild(messageElement);
             }
+
+            // Scroll to bottom after adding new content
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
         async function generateKeyPair() {
@@ -640,12 +693,25 @@
             }
 
             try {
+                // Clear any existing timer before new connection
+                if (keyRotationTimer) {
+                    clearInterval(keyRotationTimer);
+                    keyRotationTimer = null;
+                }
+
                 // Generate RSA key pair for this client
                 const keyPair = await generateKeyPair();
                 window.privateKey = keyPair.privateKey;
                 const publicKeyStr = await exportPublicKey(keyPair.publicKey);
 
-                if (ws) ws.close();
+                if (ws) {
+                    ws.close();
+                    // Clear timer when closing existing connection
+                    if (keyRotationTimer) {
+                        clearInterval(keyRotationTimer);
+                        keyRotationTimer = null;
+                    }
+                }
                 
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}/ws/${clientId}`;
@@ -691,7 +757,11 @@
                 };
                 
                 ws.onclose = () => {
-                    clearInterval(keyRotationTimer);  // Clear the timer
+                    if (keyRotationTimer) {
+                        clearInterval(keyRotationTimer);
+                        keyRotationTimer = null;
+                    }
+                    
                     document.getElementById('status').innerHTML = 'Disconnected';
                     document.getElementById('exchange-controls').style.display = 'none';
                     document.getElementById('connect-controls').style.display = 'block';
@@ -872,23 +942,14 @@
             }
         }
 
+        // Update the sendMessage function
         async function sendMessage() {
             const messageInput = document.getElementById('chat-input');
             const message = messageInput.value.trim();
             const partnerId = document.getElementById('partnerId').value;
             
-            if (!message) {
-                alert('Please type a message');
-                return;
-            }
-
-            if (!partnerId) {
-                alert('Please enter Partner ID and start key exchange first');
-                return;
-            }
-
-            if (!cryptoKey) {
-                alert('Please complete key exchange before sending messages');
+            if (!message || !partnerId || !cryptoKey) {
+                alert('Please ensure you have a message, partner ID, and active session');
                 return;
             }
 
@@ -913,14 +974,8 @@
 
                 // Add message to chat
                 const chatMessages = document.getElementById('chat-messages');
-                chatMessages.innerHTML += `
-                    <div class="message-bubble sent-message">
-                        <div class="message-sender">You</div>
-                        <div>${message}</div>
-                        <div class="encrypted-text">Encrypted: ${encryptedMessage}</div>
-                        <div class="message-time">${formatTime(new Date())}</div>
-                    </div>
-                `;
+                const messageElement = createMessageElement('sent', message, 'You');
+                chatMessages.appendChild(messageElement);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
 
                 // Send the encrypted message
