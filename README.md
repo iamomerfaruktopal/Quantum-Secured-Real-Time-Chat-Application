@@ -49,7 +49,7 @@ A secure chat application implementing quantum-inspired cryptography with automa
 ## Installation
 
 1. Clone the Repository:
-   git clone https://github.com/yourusername/quantum-secure-chat.git
+   git clone https://github.com/yourusername/Quantum-Secured-Real-Time-Chat-Application.git
    cd quantum-secure-chat
 
 2. Set Up Virtual Environment:
@@ -131,5 +131,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Contact
 
-Your Name - @yourusername
-Project Link: https://github.com/yourusername/quantum-secure-chat
+Ömer Faruk Topal - @iamomerfaruktopal
+Personal Website: https://web.itu.edu.tr/topalo24/
+Project Link: https://github.com/iamomerfaruktopal/Quantum-Secured-Real-Time-Chat-Application
